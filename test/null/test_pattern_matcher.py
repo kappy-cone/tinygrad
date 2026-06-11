@@ -1,7 +1,9 @@
-import unittest, itertools
+import unittest, itertools, types
 from tinygrad.dtype import dtypes
 from tinygrad.uop.ops import Ops, UOp, GroupOp # noqa: F401
-from tinygrad.uop.ops import PatternMatcher, UPat
+from tinygrad.uop.ops import PatternMatcher, UPat, deconstruct_function
+
+SENTINEL_GLOBAL = 42
 
 class TestPatternMatcher(unittest.TestCase):
   def test_simple_match(self):
@@ -200,6 +202,14 @@ class TestPatternMatcher(unittest.TestCase):
     ])
     self.assertIsNotNone(matcher.rewrite(u1))
     self.assertIsNotNone(matcher.rewrite(u2))
+
+  def test_deconstruct_function_nested_code_globals(self):
+    # genexpr on purpose: it stays a separate depth-2 code object on every supported Python,
+    # while PEP 709 (3.12+) inlines listcomps and would make this test vacuous there
+    def victim(xs): return list(map(lambda x: sum(SENTINEL_GLOBAL for _ in range(x)), xs))
+    code, globs, name, defaults = deconstruct_function(victim)
+    self.assertIn("SENTINEL_GLOBAL", globs)
+    self.assertEqual(types.FunctionType(code, globs, name, defaults)([2]), [84])
 
   def _assert_eq_upat(self, a:UPat, b:UPat):
     assert (sorted(map(str,a.op)) if a.op else [] == (sorted(map(str,b.op)) if b.op else []))
